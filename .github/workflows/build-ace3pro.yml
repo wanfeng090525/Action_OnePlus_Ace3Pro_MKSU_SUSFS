@@ -60,6 +60,9 @@ env:
   KERNEL_VERSION: "6.1"
   ANDROID_VERSION: android14
   SUSFS_BRANCH: gki-android14-6.1
+  # 固定 SukiSU Ultra 源码提交（builtin 分支）。上游 builtin HEAD 长期处于半合并状态，
+  # 直接跟踪 HEAD 会稳定编译失败，原因见 "Add SukiSU Ultra" 步骤注释。
+  SUKISU_REF: 6c284e957feaa9a388a9f1c37dc4ec80d95e434b
 
 jobs:
   build:
@@ -131,12 +134,19 @@ jobs:
           git add -A
           git commit -m "Force remove -dirty suffix from kernel version"
 
-      # 集成 SukiSU Ultra（内置模式）
+      # 集成 SukiSU Ultra（内置 builtin 模式）
+      # setup.sh -s builtin 会切到 builtin 分支，但该分支 HEAD 长期处于半合并状态：
+      #   throne_tracker.c 使用了作用域外的 pkg、
+      #   pkg_observer.c 调用未定义的 TRACK_THRONE_FORCE_SYNCHRONOUS、
+      #   dispatch.c 使用 supercall.h 未定义的 KSU_IOCTL_MANAGER，
+      # 跟踪 HEAD 会稳定编译失败，因此固定到已验证自洽的上游提交 SUKISU_REF。
       - name: Add SukiSU Ultra
         run: |
           cd kernel_workspace/kernel_platform
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
           cd ./KernelSU
+          git checkout -f "$SUKISU_REF"
+          git rev-parse HEAD | grep -qF "$SUKISU_REF" || { echo "错误：SukiSU 未固定到 $SUKISU_REF"; exit 1; }
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           sed -i "s/^DKSU_VERSION=.*/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile || true
