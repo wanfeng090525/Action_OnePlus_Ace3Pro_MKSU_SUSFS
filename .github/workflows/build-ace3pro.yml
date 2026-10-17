@@ -259,9 +259,25 @@ jobs:
             fi
             if [ -e ./msm-kernel/modules.bzl ]; then
               sed -i 's/"drivers\/block\/zram\/zram\.ko",//g; s/"mm\/zsmalloc\.ko",//g' "./msm-kernel/modules.bzl"
-              echo "CONFIG_ZSMALLOC=y" >> "msm-kernel/arch/arm64/configs/${CPUD}-GKI.config"
-              echo "CONFIG_ZRAM=y" >> "msm-kernel/arch/arm64/configs/${CPUD}-GKI.config"
             fi
+
+            # 注意 bazel 目标 //msm-kernel:${CPUD}_gki 的 .config 是这两个文件合并的
+            # （CI 日志：Using msm-kernel/arch/arm64/configs/gki_defconfig as base，
+            #  Merging msm-kernel/arch/arm64/configs/vendor/${CPUD}_GKI.config）：
+            #   base     : msm-kernel/arch/arm64/configs/gki_defconfig        （含 CONFIG_ZRAM=m）
+            #   fragment : msm-kernel/arch/arm64/configs/vendor/${CPUD}_GKI.config
+            # 上面已把 zram.ko / zsmalloc.ko 从 modules.bzl 的 module_outs 里删掉，所以必须
+            # 同时把这两棵树里的 zram/zsmalloc 改成内建 =y。否则 msm-kernel 侧仍会产出
+            # zram.ko、zsmalloc.ko，bazel 会以
+            # "The following kernel modules are built but not copied" 直接失败。
+            for f in "msm-kernel/arch/arm64/configs/gki_defconfig" \
+                     "msm-kernel/arch/arm64/configs/vendor/${CPUD}_GKI.config"; do
+              [ -f "$f" ] || { echo "警告：未找到 $f"; continue; }
+              sed -i '/^CONFIG_ZSMALLOC=/d; /^CONFIG_ZRAM=/d; /^# CONFIG_ZSMALLOC=y$/d; /^# CONFIG_ZRAM=y$/d' "$f"
+              echo "CONFIG_ZSMALLOC=y" >> "$f"
+              echo "CONFIG_ZRAM=y" >> "$f"
+              echo "zram/zsmalloc 已设为内建：$f"
+            done
 
             if grep -q "CONFIG_ZSMALLOC=y" "$CONFIG_FILE" && grep -q "CONFIG_ZRAM=y" "$CONFIG_FILE"; then
               echo "CONFIG_CRYPTO_LZ4HC=y" >> "$CONFIG_FILE"
