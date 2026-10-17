@@ -170,6 +170,13 @@ jobs:
           cp ../../SukiSU_patch/69_hide_stuff.patch ./
           echo "正在打隐藏应用补丁"
           patch -p1 -F 3 < 69_hide_stuff.patch
+          # 69_hide_stuff.patch 是针对旧版 SUSFS 生成的，hunk 会带 fuzz 偏移应用，
+          # 新增的 dentry 声明没有初始化，会命中 clang 的
+          # -Werror,-Wsometimes-uninitialized（clang 把 -Werror 打成了 error），
+          # 这里统一补成 = NULL，既消除报错也保证判空后再解引用。
+          sed -i 's/struct dentry \*dentry;/struct dentry *dentry = NULL;/g' fs/proc/task_mmu.c
+          echo "==== 补丁后的 show_map_vma ===="
+          awk '/^show_map_vma\(struct seq_file/{f=1} f{printf "%5d| %s\n", NR, $0} f&&/^}/{exit}' fs/proc/task_mmu.c
 
       - name: Apply LZ4KD assets and patch
         if: ${{ github.event.inputs.LZ4KD == 'true' }}
