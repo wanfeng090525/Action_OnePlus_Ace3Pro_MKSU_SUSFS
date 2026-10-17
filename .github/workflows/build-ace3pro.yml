@@ -160,6 +160,16 @@ jobs:
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
           cd ./common
           patch -p1 < 50_add_susfs_in_${SUSFS_BRANCH}.patch || true
+          # 本机型 fs/proc/base.c 的 include 块里没有 #include <linux/dma-buf.h>，
+          # 导致 50_add_susfs 的 base.c include hunk 上下文对不上而 FAILED，
+          # 于是 base.c 用到 SUSFS_IS_INODE_* 却拿不到 susfs_def.h，编译报
+          # "call to undeclared function"。这里按上游同样的写法兜底补上。
+          if ! grep -qF 'linux/susfs_def.h' fs/proc/base.c; then
+            awk '/^#include <trace\/events\/oom\.h>/{print "#if defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)"; print "#include <linux/susfs_def.h>"; print "#endif // #if defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)"; print ""} {print}' fs/proc/base.c > fs/proc/base.c.tmp
+            mv fs/proc/base.c.tmp fs/proc/base.c
+          fi
+          rm -f fs/proc/base.c.rej
+          grep -qF 'linux/susfs_def.h' fs/proc/base.c || { echo "错误：base.c 仍然缺少 susfs_def.h"; exit 1; }
           echo "完成 SUSFS 补丁"
 
       # 隐藏相关补丁
