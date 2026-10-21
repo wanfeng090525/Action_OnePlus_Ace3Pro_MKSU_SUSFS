@@ -180,6 +180,32 @@ jobs:
           fi
           rm -f fs/proc/base.c.rej
           grep -qF 'linux/susfs_def.h' fs/proc/base.c || { echo "错误：base.c 仍然缺少 susfs_def.h"; exit 1; }
+          # 同理，本机型 fs/namespace.c 的 include 块里没有 #include <trace/hooks/blk.h>，
+          # 使 50_add_susfs 的 namespace.c hunk #1（susfs_def.h 与 SUS_MOUNT 的 extern /
+          # CL_COPY_MNT_NS 定义）FAILED；后续 hunk 仍会打上，于是 namespace.c 里出现
+          # susfs_is_current_ksu_domain / DEFAULT_KSU_MNT_ID / CL_COPY_MNT_NS 等
+          # undeclared identifier。这里按同一位置补回 hunk #1 的内容。
+          if ! grep -qF 'linux/susfs_def.h' fs/namespace.c; then
+            awk '/^#include "internal.h"$/{
+              print;
+              print "";
+              print "#ifdef CONFIG_KSU_SUSFS";
+              print "#include <linux/susfs_def.h>";
+              print "#endif // #ifdef CONFIG_KSU_SUSFS";
+              print "";
+              print "#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT";
+              print "extern bool susfs_is_current_ksu_domain(void);";
+              print "extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;";
+              print "";
+              print "#define CL_COPY_MNT_NS BIT(25) /* used by copy_mnt_ns() */";
+              print "#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT";
+              next
+            } {print}' fs/namespace.c > fs/namespace.c.tmp
+            mv fs/namespace.c.tmp fs/namespace.c
+          fi
+          rm -f fs/namespace.c.rej
+          grep -qF 'linux/susfs_def.h' fs/namespace.c || { echo "错误：namespace.c 仍然缺少 susfs_def.h"; exit 1; }
+          grep -qF 'CL_COPY_MNT_NS' fs/namespace.c || { echo "错误：namespace.c 仍然缺少 CL_COPY_MNT_NS"; exit 1; }
           echo "完成 SUSFS 补丁"
 
       # 隐藏相关补丁
