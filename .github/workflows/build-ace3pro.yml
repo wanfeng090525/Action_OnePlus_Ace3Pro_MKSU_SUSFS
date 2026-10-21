@@ -60,6 +60,12 @@ env:
   KERNEL_VERSION: "6.1"
   ANDROID_VERSION: android14
   SUSFS_BRANCH: gki-android14-6.1
+  # 固定 SUSFS 补丁提交。2026-10-19 起上游把该分支 rebase 到 android14-6.1.176 并同步
+  # 官方 KernelSU main，SUSFS 会去调用 ksu_setup_preinit_file / ksu_preinit_handle_post_execveat
+  # 以及 my_write_context / my_write_access / my_setprocattr（selinux_hide），
+  # 而当前固定的 SukiSU Ultra 提交并不导出这些符号，vmlinux 链接会报 undefined symbol。
+  # 这里固定到 2026-10-14 的已验证提交（与 10-17 成功构建一致）。
+  SUSFS_REF: 92aab7f579e9fb440a43e387c13bff519af13462
   # 固定 SukiSU Ultra 源码提交（builtin 分支）。上游 builtin HEAD 长期处于半合并状态，
   # 直接跟踪 HEAD 会稳定编译失败，原因见 "Add SukiSU Ultra" 步骤注释。
   SUKISU_REF: 6c284e957feaa9a388a9f1c37dc4ec80d95e434b
@@ -163,6 +169,10 @@ jobs:
         run: |
           cd kernel_workspace
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b $SUSFS_BRANCH
+          cd susfs4ksu
+          git checkout -f "$SUSFS_REF"
+          git rev-parse HEAD | grep -qF "$SUSFS_REF" || { echo "错误：SUSFS 补丁未固定到 $SUSFS_REF"; exit 1; }
+          cd ..
           cd kernel_platform
           echo "正在给内核打 SUSFS 补丁"
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_${SUSFS_BRANCH}.patch ./common/
